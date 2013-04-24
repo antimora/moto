@@ -2,6 +2,7 @@ import datetime
 import md5
 
 from moto.core import BaseBackend
+from .utils import clean_key_name
 
 
 class FakeKey(object):
@@ -72,6 +73,8 @@ class S3Backend(BaseBackend):
         return None
 
     def set_key(self, bucket_name, key_name, value):
+        key_name = clean_key_name(key_name)
+
         bucket = self.buckets[bucket_name]
         new_key = FakeKey(name=key_name, value=value)
         bucket.keys[key_name] = new_key
@@ -79,24 +82,27 @@ class S3Backend(BaseBackend):
         return new_key
 
     def get_key(self, bucket_name, key_name):
+        key_name = clean_key_name(key_name)
         bucket = self.get_bucket(bucket_name)
         if bucket:
             return bucket.keys.get(key_name)
 
-    def prefix_query(self, bucket, prefix):
+    def prefix_query(self, bucket, prefix, delimiter):
         key_results = set()
         folder_results = set()
         if prefix:
             for key_name, key in bucket.keys.iteritems():
                 if key_name.startswith(prefix):
-                    if '/' in key_name.lstrip(prefix):
-                        key_without_prefix = key_name.lstrip(prefix).split("/")[0]
+                    if delimiter and '/' in key_name.lstrip(prefix):
+                        # If delimiter, we need to split out folder_results
+                        key_without_prefix = "{}/".format(key_name.lstrip(prefix).split("/")[0])
                         folder_results.add("{}{}".format(prefix, key_without_prefix))
                     else:
                         key_results.add(key)
         else:
             for key_name, key in bucket.keys.iteritems():
-                if '/' in key_name:
+                if delimiter and '/' in key_name:
+                    # If delimiter, we need to split out folder_results
                     folder_results.add(key_name.split("/")[0])
                 else:
                     key_results.add(key)
@@ -107,10 +113,13 @@ class S3Backend(BaseBackend):
         return key_results, folder_results
 
     def delete_key(self, bucket_name, key_name):
+        key_name = clean_key_name(key_name)
         bucket = self.buckets[bucket_name]
         return bucket.keys.pop(key_name)
 
     def copy_key(self, src_bucket_name, src_key_name, dest_bucket_name, dest_key_name):
+        src_key_name = clean_key_name(src_key_name)
+        dest_key_name = clean_key_name(dest_key_name)
         src_bucket = self.buckets[src_bucket_name]
         dest_bucket = self.buckets[dest_bucket_name]
         dest_bucket.keys[dest_key_name] = src_bucket.keys[src_key_name]
